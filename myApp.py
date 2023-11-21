@@ -159,6 +159,8 @@ class App:
         self._geometry_panel_title.add_child(gui.Label(f'Operate'))
         self._geometry_panel.add_child(self._geometry_panel_title)
 
+
+
         # self._geometry_panel_line0 = gui.Horiz(0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.254 * em))
         # self._geometry_panel_line0.add_child(gui.Label(f'Geometry 1'))
         # self._geometry_panel_line0.add_child(gui.Checkbox(f''))
@@ -307,6 +309,9 @@ class App:
             w.set_on_menu_item_activated(App.MENU_SHOW_COORDINATE_AXIS, self._menu_show_coordinate_axis)
             w.set_on_menu_item_activated(App.MENU_SHOW_RIGHTSIDE_PANEL, self._menu_show_rightside_panel)
 
+
+    def update_geometries_list(self):
+        self._geometries
     def _menu_show_rightside_panel(self):
         pass
     def _menu_show_coordinate_axis(self):
@@ -511,11 +516,31 @@ class App:
         self._next_idx = 0
         self._scene.scene.clear_geometry()
 
-    def update_geometries_list(self):
+    def refresh_geometries_list(self):
         '''
-        更新几何体列表
+        更新右侧几何体列表
         :return:
         '''
+        logger.info(f'更新几何体列表，数量：{len(self._geometries)}')
+        em = self.window.theme.font_size
+        self._geometry_panel = gui.CollapsableVert('Geometries', 0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.254 * em))
+        self._geometry_panel.add_child(self._geometry_panel_title)
+        for i, _ in enumerate(self._geometries):
+            geometry_panel_line = gui.Horiz(0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.254 * em))
+            geometry_panel_line.add_child(gui.Label(f'{i}'))
+            visible_checkbox = gui.Checkbox(f'')
+            visible_checkbox.checked = self._geometries_shown[i]
+            geometry_panel_line.add_child(visible_checkbox)
+            active_checkbox = gui.Checkbox(f'')
+            active_checkbox.checked = i == self._active_geometries_idx
+            geometry_panel_line.add_child(active_checkbox)
+            geometry_panel_line.add_child(gui.Button(f'Remove'))
+            self._geometry_panel.add_child(geometry_panel_line)
+        # self.window.set_on_layout(self._on_layout)
+        self.window.add_child(self._geometry_panel)
+        # self.window.post_redraw()
+        # self.window.set_needs_layout()
+
 
     def add_a_geometry(self, geometry):
         '''
@@ -538,6 +563,7 @@ class App:
         self._scene.scene.add_geometry(str(self._next_idx), geometry, material)
         self._active_geometries_idx = self._next_idx
         self._next_idx += 1
+        self.refresh_geometries_list()
 
         # 重绘
         self._scene.force_redraw()
