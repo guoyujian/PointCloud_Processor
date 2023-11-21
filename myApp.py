@@ -12,6 +12,7 @@ import numpy as np
 import copy
 import sys
 import platform
+from functools import partial
 
 
 
@@ -158,6 +159,9 @@ class App:
         self._geometry_panel_title.add_child(gui.Label(f'Active'))
         self._geometry_panel_title.add_child(gui.Label(f'Operate'))
         self._geometry_panel.add_child(self._geometry_panel_title)
+        self._geometry_panel_items = gui.WidgetProxy()
+        self._geometry_panel.add_child(self._geometry_panel_items)
+
 
 
 
@@ -311,7 +315,7 @@ class App:
 
 
     def update_geometries_list(self):
-        self._geometries
+        pass
     def _menu_show_rightside_panel(self):
         pass
     def _menu_show_coordinate_axis(self):
@@ -516,30 +520,96 @@ class App:
         self._next_idx = 0
         self._scene.scene.clear_geometry()
 
+
+    def _geometries_num(self):
+        '''
+        计算self._geometries列表中有效的几何体数量
+        :return:
+        '''
+        return sum([1 if _ else 0 for _ in self._geometries])
+
     def refresh_geometries_list(self):
         '''
         更新右侧几何体列表
         :return:
         '''
-        logger.info(f'更新几何体列表，数量：{len(self._geometries)}')
+        logger.info(f'更新几何体列表，数量：{self._geometries_num()}')
         em = self.window.theme.font_size
-        self._geometry_panel = gui.CollapsableVert('Geometries', 0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.254 * em))
-        self._geometry_panel.add_child(self._geometry_panel_title)
+        self._geometry_panel_items.set_widget(None)
+        # self._geometry_panel = gui.CollapsableVert('Geometries', 0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.254 * em))
+        # self._geometry_panel.add_child(self._geometry_panel_title)
+        widget = gui.Vert()
+
+        def switch_visible(geometry_idx, bool):
+            '''
+            点击是否可见checkbox时触发的事件
+            :param geometry_idx:
+            :param bool:
+            :return:
+            '''
+            self._scene.scene.show_geometry(str(geometry_idx), bool)
+            self._geometries_shown[geometry_idx] = bool
+            logger.info(('展示' if bool else '隐藏') + f' 几何体 {geometry_idx}')
+
+
+        def switch_active(geometry_idx, bool):
+            '''
+            点击激活checkbox时触发的事件
+            :param geometry_idx:
+            :param bool:
+            :return:
+            '''
+            if geometry_idx == self._active_geometries_idx or not bool:
+                # 不能取消勾选激活状态下的几何体，只能通过激活其他几何体来切换
+                logger.info(f'不能取消勾选激活状态下的几何体，只能通过激活其他几何体来实现切换')
+                new_active_checkbox = \
+                self._geometry_panel_items.get_widget().get_children()[geometry_idx].get_children()[2]
+                new_active_checkbox.checked = True
+                return gui.Checkbox.IGNORED
+            logger.info(f'switch active geometry idx {self._active_geometries_idx} to {geometry_idx}')
+            new_active_checkbox = self._geometry_panel_items.get_widget().get_children()[geometry_idx].get_children()[2]
+            new_active_checkbox.checked = bool
+            old_active_checkbox = self._geometry_panel_items.get_widget().get_children()[self._active_geometries_idx].get_children()[2]
+            old_active_checkbox.checked = False
+            self._active_geometries_idx = geometry_idx
+
+        def remove_geometry_button_event(geometry_idx):
+            '''
+            点击remove按钮时触发的事件
+            :param geometry_idx:
+            :return:
+            '''
+            if self._active_geometries_idx == geometry_idx:
+                logger.info(f'不能移除活动状态下的几何体')
+                return gui.Button.IGNORED
+            self._geometries[geometry_idx] = None
+            self._scene.scene.remove_geometry(str(geometry_idx))
+            self.refresh_geometries_list()
+
         for i, _ in enumerate(self._geometries):
+            if not _:
+                continue
             geometry_panel_line = gui.Horiz(0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.254 * em))
             geometry_panel_line.add_child(gui.Label(f'{i}'))
             visible_checkbox = gui.Checkbox(f'')
             visible_checkbox.checked = self._geometries_shown[i]
+            visible_checkbox.set_on_checked(partial(switch_visible, i))
             geometry_panel_line.add_child(visible_checkbox)
             active_checkbox = gui.Checkbox(f'')
             active_checkbox.checked = i == self._active_geometries_idx
+            active_checkbox.set_on_checked(partial(switch_active, i))
             geometry_panel_line.add_child(active_checkbox)
-            geometry_panel_line.add_child(gui.Button(f'Remove'))
-            self._geometry_panel.add_child(geometry_panel_line)
+            remove_button = gui.Button(f'Remove')
+            remove_button.set_on_clicked(partial(remove_geometry_button_event, i))
+            geometry_panel_line.add_child(remove_button)
+            widget.add_child(geometry_panel_line)
+        self._geometry_panel_items.set_widget(widget)
         # self.window.set_on_layout(self._on_layout)
-        self.window.add_child(self._geometry_panel)
+        # self.window.add_child(self._geometry_panel)
+        # self._rightside_panel.add_fixed(3)
         # self.window.post_redraw()
-        # self.window.set_needs_layout()
+        self.window.set_needs_layout()
+
 
 
     def add_a_geometry(self, geometry):
