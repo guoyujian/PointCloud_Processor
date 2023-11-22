@@ -144,7 +144,7 @@ class App:
         # 设置鼠标事件
         self._scene.set_on_mouse(self._mouse_event)
 
-        self._scene.set_view_controls(gui.SceneWidget.Controls.PICK_POINTS)
+        # self._scene.set_view_controls(gui.SceneWidget.Controls.PICK_POINTS)
 
         # 设置菜单栏
         # self._test = gui.ListView()
@@ -264,6 +264,7 @@ class App:
             mode_menu.add_item("Pick Points", App.MENU_MODE_PCIKPOINTS)
             # 默认是展示模式
             mode_menu.set_checked(App.MENU_MODE_SHOW, True)
+            self.mode_menu = mode_menu
 
             # operate menu
             operate_menu = gui.Menu()
@@ -306,7 +307,7 @@ class App:
 
             w.set_on_menu_item_activated(App.MENU_MODE_SHOW, self._menu_mode_show)
             w.set_on_menu_item_activated(App.MENU_MODE_EDIT, self._menu_mode_edit)
-            w.set_on_menu_item_activated(App.MENU_MODE_PCIKPOINTS, self._menu_pickpoints)
+            w.set_on_menu_item_activated(App.MENU_MODE_PCIKPOINTS, self._menu_mode_pickpoints)
 
             w.set_on_menu_item_activated(App.MENU_OPERATE_COLORATION, self._menu_operate_coloration)
             w.set_on_menu_item_activated(App.MENU_OPERATE_DOWNSAMPLE, self._menu_operate_downsample)
@@ -341,14 +342,56 @@ class App:
     def _menu_operate_coloration(self):
         pass
     def _menu_mode_edit(self):
+        # 将scene状态切换至选点状态
+        logger.info(f'切换至编辑状态')
+        self._scene_mode = SceneMode.status_edit
+        self.mode_menu.set_checked(App.MENU_MODE_SHOW, False)
+        self.mode_menu.set_checked(App.MENU_MODE_PCIKPOINTS, False)
+        self.mode_menu.set_checked(App.MENU_MODE_EDIT, True)
         pass
     def _menu_mode_show(self):
+        # 将scene状态切换至选点状态
+        logger.info(f'切换至展示状态')
+        self._scene_mode = SceneMode.status_edit
+        self.mode_menu.set_checked(App.MENU_MODE_SHOW, True)
+        self.mode_menu.set_checked(App.MENU_MODE_PCIKPOINTS, False)
+        self.mode_menu.set_checked(App.MENU_MODE_EDIT, False)
         pass
     def _menu_calcu_volume(self):
+        '''
+        TODO: 其他计算体积的方法
+        :return:
+        '''
         pass
 
 
     def _menu_calcu_convex_hull_volume(self):
+        '''
+        计算凸包体积
+        :return:
+        '''
+        if self._active_geometries_idx >= 0:
+            model = self._geometries[self._active_geometries_idx]
+            hull, _ = model.compute_convex_hull()
+            hull: o3d.geometry.TriangleMesh
+            volume = hull.get_volume()
+            logger.info(f'几何体 {self._active_geometries_idx}的凸包体积：{volume}')
+
+            volume_dialog = gui.Dialog("convex hull volume")
+            volume_res_label = gui.Label(f'Convex Hull Volume of Geometry {self._active_geometries_idx}: {volume} m3')
+            ok_button = gui.Button('ok')
+            # ok_button.frame()
+            def ok():
+                self.window.close_dialog()
+            ok_button.set_on_clicked(ok)
+            vert_layout = gui.Vert()
+            vert_layout.add_child(volume_res_label)
+            vert_layout.add_child(ok_button)
+            volume_dialog.add_child(vert_layout)
+            self.window.show_dialog(volume_dialog)
+        else:
+            logger.info(f'没有加载任何模型')
+
         pass
 
     def _menu_calcu_distance_g2g(self):
@@ -477,15 +520,16 @@ class App:
         self.window.show_dialog(file_picker)
 
 
-    def _menu_pickpoints(self):
+    def _menu_mode_pickpoints(self):
         '''
-        选点事件
+        选点mode
         :return:
         '''
-        # 将scene状态切换至选点状态
         logger.info(f'切换至选点状态')
         self._scene_mode = SceneMode.status_pickpoints
-
+        self.mode_menu.set_checked(App.MENU_MODE_SHOW, False)
+        self.mode_menu.set_checked(App.MENU_MODE_PCIKPOINTS, True)
+        self.mode_menu.set_checked(App.MENU_MODE_EDIT, False)
         pass
 
 
@@ -525,7 +569,7 @@ class App:
 
     def _geometries_num(self):
         '''
-        计算self._geometries列表中有效的几何体数量
+        TODO: 计算self._geometries列表中有效的几何体数量
         :return:
         '''
         return sum([1 if _ else 0 for _ in self._geometries])
@@ -703,20 +747,36 @@ class App:
     def run(self):
         gui.Application.instance.run()
 
-    def _calc_prefer_indicate(self, point):
-        pcd_tree = o3d.geometry.KDTreeFlann(self.pcd)
-        [k, idx, _] = pcd_tree.search_knn_vector_3d(point, 1)
-        return idx[-1]
+    def _calc_prefer_indicate(self, geo, point):
+        '''
+        根据世界坐标搜索点云坐标，返回在选中点在点云中的索引值
+        :param self:
+        :param point:
+        :return:
+        '''
+        pcd_tree = o3d.geometry.KDTreeFlann(geo)
+        [k, picked_idx, _] = pcd_tree.search_knn_vector_3d(point, 1)
+        return picked_idx[-1]
 
     def _mouse_event(self, event):
         '''
         鼠标事件
         :return:
         '''
-
         if (self._scene_mode == SceneMode.status_pickpoints and event.type == gui.MouseEvent.Type.BUTTON_DOWN
-                and event.is_button_down(gui.MouseButton.LEFT)):
+                and event.is_button_down(gui.MouseButton.LEFT) and event.is_modifier_down(gui.KeyModifier.CTRL)):
+            # 选点模式下，按住ctrl+鼠标左键进行选点操作
+
+            if self._active_geometries_idx < 0:
+                # 没有任何几何体，试图选点
+                logger.info(f'至少要加载一个几何体')
+                return gui.Widget.EventCallbackResult.IGNORED
+
+            # 获得操作对象
+            geo = self._geometries[self._active_geometries_idx]
+            assert geo
             logger.info(f'选点...')
+
             def depth_callback(depth_image):
 
                 x = event.x - self._scene.frame.x
@@ -733,14 +793,14 @@ class App:
 
                     text = "({:.3f}, {:.3f}, {:.3f})".format(world[0], world[1], world[2])
 
-                    idx = self._calc_prefer_indicate(world)
-                    true_point = np.asarray(self.pcd.points)[idx]
+                    idx = self._calc_prefer_indicate(geo, world)
+                    true_point = np.asarray(geo.points)[idx]
 
                     self._pick_num += 1
                     self._picked_indicates.append(idx)
                     self._picked_points.append(true_point)
 
-                    logger.info(f"Pick point #{idx} at ({true_point[0]}, {true_point[1]}, {true_point[2]})")
+                    logger.info(f"Pick point #{idx} at ({true_point}")
 
                 def draw_point():
                     self._info.text = text
@@ -757,7 +817,7 @@ class App:
                         sphere.translate(true_point)
                         material = rendering.MaterialRecord()
                         material.shader = 'defaultUnlit'
-                        self._scene.scene.add_geometry("sphere" + str(self._pick_num), sphere, material)
+                        self._scene.scene.add_geometry("point" + str(self._pick_num), sphere, material)
                         self._scene.force_redraw()
 
                 gui.Application.instance.post_to_main_thread(self.window, draw_point)
@@ -766,13 +826,13 @@ class App:
             return gui.Widget.EventCallbackResult.HANDLED
         elif (self._scene_mode == SceneMode.status_pickpoints and event.type == gui.MouseEvent.Type.BUTTON_DOWN
                 and event.is_button_down(gui.MouseButton.RIGHT)):
+            # 选点模式下，点击鼠标右键取消选中的点
             if self._pick_num > 0:
                 idx = self._picked_indicates.pop()
                 point = self._picked_points.pop()
 
-                logger.info(f"Undo pick: #{idx} at ({point[0]}, {point[1]}, {point[2]})")
-
-                self._scene.scene.remove_geometry('sphere' + str(self._pick_num))
+                logger.info(f"Undo pick: #{idx} at ({point})")
+                self._scene.scene.remove_geometry('point' + str(self._pick_num))
                 self._pick_num -= 1
                 self._scene.remove_3d_label(self._label3d_list.pop())
                 self._scene.force_redraw()
@@ -780,8 +840,6 @@ class App:
                 logger.info("Undo no point!")
             return gui.Widget.EventCallbackResult.HANDLED
         return gui.Widget.EventCallbackResult.IGNORED
-
-
 
 
 def main():
