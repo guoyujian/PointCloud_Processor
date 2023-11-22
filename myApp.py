@@ -175,11 +175,14 @@ class App:
         # self._geometry_panel.add_child(self._geometry_panel_line0)
 
 
+        # 点列表先不加进去了
+        # self._point_panel = gui.CollapsableVert('Points', 0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.254 * em))
 
-        self._point_panel = gui.CollapsableVert('Points', 0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.254 * em))
+
+
         self._attribute_panel = gui.CollapsableVert('Attribute', 0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.254 * em))
         self._rightside_panel.add_child(self._geometry_panel)
-        self._rightside_panel.add_child(self._point_panel)
+        # self._rightside_panel.add_child(self._point_panel)
         self._rightside_panel.add_child(self._attribute_panel)
 
         # self._rightside_panel.visible = False
@@ -397,7 +400,62 @@ class App:
     def _menu_calcu_distance_g2g(self):
         pass
 
+    @staticmethod
+    def cal_distance_p2p(p1: np.ndarray, p2: np.ndarray):
+        '''计算两点之间的欧氏距离'''
+        return np.linalg.norm(p1-p2)
+
+
     def _menu_calcu_distance_p2p(self):
+        lines = gui.Vert()
+        line1 = gui.Horiz()
+        line1.add_child(gui.Label('select a point: '))
+        combobox1 = gui.Combobox()
+        for i in range(self._pick_num):
+            combobox1.add_item(f'{i+1}')
+        # def combo_select_change(item_str, item)
+        # combobox.set_on_selection_changed()
+        line1.add_child(combobox1)
+
+        line2 = gui.Horiz()
+        line2.add_child(gui.Label('select the other point: '))
+        combobox2 = gui.Combobox()
+        for i in range(self._pick_num):
+            combobox2.add_item(f'{i+1}')
+        line2.add_child(combobox2)
+        line3 = gui.Horiz()
+        # widget = gui.WidgetProxy()
+        distance_res_label = gui.Label('-------------')
+        line3.add_child(distance_res_label)
+
+        calcu_button = gui.Button('Calcu')
+
+        def calcu_clicked():
+            point1_idx = combobox1.selected_index
+            point2_idx = combobox2.selected_index
+            distance = self.cal_distance_p2p(self._picked_points[point1_idx], self._picked_points[point2_idx])
+            logger.info(f'distance with point {point1_idx+1} and point {point2_idx+1}: {distance}')
+            distance_res_label.text = f'{distance:3f}'
+            # widget.set_widget(gui.Label(f'distance with point {point1_idx+1} and point {point2_idx+1}: {distance}'))
+            # self.window.set_needs_layout()
+
+        calcu_button.set_on_clicked(calcu_clicked)
+
+        cancel_button = gui.Button('Cancel')
+        cancel_button.set_on_clicked(lambda: self.window.close_dialog())
+
+        line4 = gui.Horiz()
+
+        line4.add_child(calcu_button)
+        line4.add_child(cancel_button)
+        distance_dialog = gui.Dialog('select 2 points')
+
+        lines.add_child(line1)
+        lines.add_child(line2)
+        lines.add_child(line3)
+        lines.add_child(line4)
+        distance_dialog.add_child(lines)
+        self.window.show_dialog(distance_dialog)
         pass
 
     def _menu_geometry_add_custom_sphere(self):
@@ -657,7 +715,6 @@ class App:
         self.window.set_needs_layout()
 
 
-
     def add_a_geometry(self, geometry):
         '''
         增加一个几何体，并将该几何体设置为active
@@ -766,7 +823,7 @@ class App:
         if (self._scene_mode == SceneMode.status_pickpoints and event.type == gui.MouseEvent.Type.BUTTON_DOWN
                 and event.is_button_down(gui.MouseButton.LEFT) and event.is_modifier_down(gui.KeyModifier.CTRL)):
             # 选点模式下，按住ctrl+鼠标左键进行选点操作
-
+            # 在Mac OS中不好用，不知道为什么。。
             if self._active_geometries_idx < 0:
                 # 没有任何几何体，试图选点
                 logger.info(f'至少要加载一个几何体')
@@ -801,6 +858,7 @@ class App:
                     self._picked_points.append(true_point)
 
                     logger.info(f"Pick point #{idx} at ({true_point}")
+                    self.refresh_geometries_list()
 
                 def draw_point():
                     self._info.text = text
