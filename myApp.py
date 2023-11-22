@@ -144,6 +144,8 @@ class App:
         # 设置鼠标事件
         self._scene.set_on_mouse(self._mouse_event)
 
+        self._scene.set_view_controls(gui.SceneWidget.Controls.PICK_POINTS)
+
         # 设置菜单栏
         # self._test = gui.ListView()
         # self._test.set_items(['a','b'])
