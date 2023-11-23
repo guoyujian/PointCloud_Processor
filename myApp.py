@@ -181,6 +181,10 @@ class App:
 
 
         self._attribute_panel = gui.CollapsableVert('Attribute', 0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.254 * em))
+        self._attribute_panel_proxy = gui.WidgetProxy()
+        self._attribute_panel.add_child(self._attribute_panel_proxy)
+
+
         self._rightside_panel.add_child(self._geometry_panel)
         # self._rightside_panel.add_child(self._point_panel)
         self._rightside_panel.add_child(self._attribute_panel)
@@ -279,6 +283,7 @@ class App:
             show_menu = gui.Menu()
             show_menu.add_item("Coordinate Axis", App.MENU_SHOW_COORDINATE_AXIS)
             show_menu.add_item("RightSide Panel", App.MENU_SHOW_RIGHTSIDE_PANEL)
+            show_menu.set_checked(App.MENU_SHOW_RIGHTSIDE_PANEL, self._rightside_panel.visible)
             self.show_menu = show_menu
 
 
@@ -319,10 +324,58 @@ class App:
             w.set_on_menu_item_activated(App.MENU_SHOW_COORDINATE_AXIS, self._menu_show_coordinate_axis)
             w.set_on_menu_item_activated(App.MENU_SHOW_RIGHTSIDE_PANEL, self._menu_show_rightside_panel)
 
+    def refresh_attribute_panel(self):
+        if self._active_geometries_idx < 0:
+            logger.info(f'没有激活的几何体')
+            return
+        geo = self._geometries[self._active_geometries_idx]
+        assert geo
+        if type(geo) == o3d.geometry.PointCloud:
+            # 是点云对象
+            geo: o3d.geometry.PointCloud
+            attribute_panel = gui.Vert()
+            line0 = gui.Horiz()
+            line0.add_child(gui.Label('down sample voxel:'))
+            slider = gui.Slider(gui.Slider.DOUBLE) # 滑动条
+            slider.double_value = 0 # 默认值
+            slider.set_limits(0, 0.5)
+            def slider_changed(new_voxel_size: float):
+                '''
+                当滑动条改变时，重新绘制点云
+                注意这里不改变self._geometries[self._active_geometries_idx]中的点云指针
+                :param new_voxel_size:
+                :return:
+                '''
+                if self._active_geometries_idx < 0:
+                    logger.info(f'没有激活的几何体')
+                    return
+                logger.info(f'降采样 voxel：{new_voxel_size}')
+                active_geo = self._geometries[self._active_geometries_idx]
+                if new_voxel_size <= 0:
+                    new_geo = active_geo
+                else:
+                    new_geo = active_geo.voxel_down_sample(new_voxel_size)
+                # self._geometries[self._active_geometries_idx] = new_geo
+                # logger.info(f'移除...')
+                self._scene.scene.remove_geometry(str(self._active_geometries_idx))
+                # logger.info(f'再增加')
+                material = rendering.MaterialRecord()
+                material.sRGB_color = True
+                self._scene.scene.add_geometry(str(self._active_geometries_idx), new_geo, material)
+                # voxel_label.text = new_voxel_size
+                pass
+            slider.set_on_value_changed(slider_changed)
+            line0.add_child(slider)
+            attribute_panel.add_child(line0)
+            self._attribute_panel_proxy.set_widget(attribute_panel)
 
-    def update_geometries_list(self):
-        pass
     def _menu_show_rightside_panel(self):
+        '''
+        显示or隐藏右侧面板
+        :return:
+        '''
+        self._rightside_panel.visible = not self._rightside_panel.visible
+        self.show_menu.set_checked(App.MENU_SHOW_RIGHTSIDE_PANEL, self._rightside_panel.visible)
         pass
     def _menu_show_coordinate_axis(self):
         '''
@@ -736,6 +789,7 @@ class App:
         self._scene.scene.add_geometry(str(self._next_idx), geometry, material)
         self._active_geometries_idx = self._next_idx
         self._next_idx += 1
+        self.refresh_attribute_panel()
         self.refresh_geometries_list()
 
         # 重绘
